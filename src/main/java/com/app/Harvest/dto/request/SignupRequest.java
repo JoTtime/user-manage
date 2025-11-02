@@ -16,34 +16,23 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class SignupRequest {
 
-    @NotBlank(message = "Username is required")
-    @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
-    private String username;
+    @NotBlank(message = "Cooperative name is required")
+    private String coopName;
 
     @NotBlank(message = "Email is required")
     @Email(message = "Email should be valid")
-    private String email;
+    private String coopEmail;
 
     @NotBlank(message = "Password is required")
     @Size(min = 6, message = "Password must be at least 6 characters")
     private String password;
 
-    @NotBlank(message = "Full name is required")
-    private String fullName;
+    @NotBlank(message = "Phone number is required")
+    private String phone;
 
-    private String phoneNumber;
+    @NotBlank(message = "Location is required")
+    private String location;
 
     @NotNull(message = "Role is required")
     private Role role;
-
-    // Cooperative-specific fields
-    private String cooperativeName;
-    private String cooperativeRegistrationNumber;
-    private String cooperativeAddress;
-    private String cooperativeRegion;
-    private String cooperativeDescription;
-
-    // User address fields
-    private String address;
-    private String region;
 }

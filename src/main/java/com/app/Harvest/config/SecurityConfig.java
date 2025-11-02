@@ -54,10 +54,10 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configure(http))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/users/pending-approvals").hasRole("SUPER_ADMIN")
-                        .requestMatchers("/api/users/*/approve").hasRole("SUPER_ADMIN")
-                        .requestMatchers("/api/users/*/reject").hasRole("SUPER_ADMIN")
+                        .requestMatchers("/auth/**").permitAll()  // Changed from /api/auth/**
+                        .requestMatchers("/users/pending-approvals").hasRole("SUPER_ADMIN")  // Changed
+                        .requestMatchers("/users/*/approve").hasRole("SUPER_ADMIN")  // Changed
+                        .requestMatchers("/users/*/reject").hasRole("SUPER_ADMIN")  // Changed
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exception -> exception

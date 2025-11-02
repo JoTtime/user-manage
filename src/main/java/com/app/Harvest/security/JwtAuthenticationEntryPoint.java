@@ -1,6 +1,7 @@
 package com.app.Harvest.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.app.Harvest.dto.response.ApiResponse;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,6 +26,7 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
         ApiResponse<Object> apiResponse = ApiResponse.error("Unauthorized: " + authException.getMessage());
 
         ObjectMapper mapper = new ObjectMapper();
+        mapper.registerModule(new JavaTimeModule());  // Add this line
         mapper.writeValue(response.getOutputStream(), apiResponse);
     }
 }

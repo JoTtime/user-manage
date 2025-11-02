@@ -80,13 +80,17 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public SignupResponse signup(SignupRequest signupRequest) {
         // Validate email uniqueness
-        if (userRepository.existsByEmail(signupRequest.getEmail())) {
+        if (userRepository.existsByEmail(signupRequest.getCoopEmail())) {
             throw new BadRequestException("Email already exists");
         }
 
+        // Generate username from email
+        String username = generateUsernameFromEmail(signupRequest.getCoopEmail());
+
         // Validate username uniqueness
-        if (userRepository.existsByUsername(signupRequest.getUsername())) {
-            throw new BadRequestException("Username already exists");
+        if (userRepository.existsByUsername(username)) {
+            // If username exists, append random numbers
+            username = username + UUID.randomUUID().toString().substring(0, 4);
         }
 
         // Only COOPERATIVE role can sign up
@@ -94,38 +98,35 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException("Only cooperative members can signup. Other users are added by admin.");
         }
 
-        // Create or get cooperative
-        Cooperative cooperative = null;
-        if (signupRequest.getCooperativeName() != null && !signupRequest.getCooperativeName().isEmpty()) {
-            // Check if cooperative already exists
-            cooperative = cooperativeRepository.findByName(signupRequest.getCooperativeName())
-                    .orElseGet(() -> {
-                        // Create new cooperative
-                        Cooperative newCoop = Cooperative.builder()
-                                .name(signupRequest.getCooperativeName())
-                                .registrationNumber(signupRequest.getCooperativeRegistrationNumber())
-                                .address(signupRequest.getCooperativeAddress())
-                                .region(signupRequest.getCooperativeRegion())
-                                .description(signupRequest.getCooperativeDescription())
-                                .build();
-                        return cooperativeRepository.save(newCoop);
-                    });
-        }
+        // Check if cooperative with this name already exists
+        Cooperative cooperative = cooperativeRepository.findByName(signupRequest.getCoopName())
+                .orElseGet(() -> {
+                    // Create new cooperative
+                    Cooperative newCoop = Cooperative.builder()
+                            .name(signupRequest.getCoopName())
+                            .email(signupRequest.getCoopEmail())
+                            .phoneNumber(signupRequest.getPhone())
+                            .region(signupRequest.getLocation())
+                            .address(signupRequest.getLocation())
+                            .description("Registered via signup form")
+                            .build();
+                    return cooperativeRepository.save(newCoop);
+                });
 
-        // Create user
+        // Create user account for the cooperative
         User user = User.builder()
-                .username(signupRequest.getUsername())
-                .email(signupRequest.getEmail())
+                .username(username)
+                .email(signupRequest.getCoopEmail())
                 .password(passwordEncoder.encode(signupRequest.getPassword()))
-                .fullName(signupRequest.getFullName())
-                .phoneNumber(signupRequest.getPhoneNumber())
+                .fullName(signupRequest.getCoopName() + " Admin") // Use cooperative name as full name
+                .phoneNumber(signupRequest.getPhone())
                 .role(signupRequest.getRole())
                 .isApproved(false) // Requires admin approval
-                .isValidated(false) // Requires email validation
+                .isValidated(false) // Requires email validation (you can set to true if no email validation needed)
                 .cooperative(cooperative)
                 .registrationNumber(generateRegistrationNumber())
-                .address(signupRequest.getAddress())
-                .region(signupRequest.getRegion())
+                .address(signupRequest.getLocation())
+                .region(signupRequest.getLocation())
                 .build();
 
         user = userRepository.save(user);
@@ -138,6 +139,13 @@ public class AuthServiceImpl implements AuthService {
                 .isApproved(user.getIsApproved())
                 .message("Registration successful. Your account is pending approval by admin.")
                 .build();
+    }
+
+    private String generateUsernameFromEmail(String email) {
+        // Extract username from email (part before @)
+        String username = email.substring(0, email.indexOf('@')).toLowerCase();
+        // Remove any special characters and replace with underscore
+        return username.replaceAll("[^a-zA-Z0-9]", "_");
     }
 
     private String generateRegistrationNumber() {
