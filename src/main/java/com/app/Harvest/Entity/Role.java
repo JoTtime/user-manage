@@ -1,4 +1,4 @@
-package com.app.Harvest.model;
+package com.app.Harvest.Entity;
 
 public enum Role {
     FARMER,

@@ -1,90 +1,42 @@
 package com.app.Harvest.Entity;
 
-import com.app.Harvest.model.User;
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.util.List;
 
 @Entity
 @Table(name = "cooperatives")
-public class Cooperative {
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class Cooperative extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
+    @Column(nullable = false, unique = true)
     private String name;
 
-    private String region;
+    @Column(name = "registration_number", unique = true)
+    private String registrationNumber;
 
-    private String contactNumber;
+    @Column(name = "phone_number")
+    private String phoneNumber;
 
+    @Column(name = "email")
+    private String email;
+
+    @Column(name = "address")
     private String address;
 
-    // Cooperative account info
-    @OneToOne
-    @JoinColumn(name = "user_id")
-    private User user;
+    @Column(name = "region")
+    private String region;
 
-    // Farmers managed by this cooperative
-    @OneToMany(mappedBy = "cooperative", cascade = CascadeType.ALL)
-    private List<Farmer> farmers;
+    @Column(name = "description", columnDefinition = "TEXT")
+    private String description;
 
-    // ======== GETTERS AND SETTERS ========
-
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getRegion() {
-        return region;
-    }
-
-    public void setRegion(String region) {
-        this.region = region;
-    }
-
-    public String getContactNumber() {
-        return contactNumber;
-    }
-
-    public void setContactNumber(String contactNumber) {
-        this.contactNumber = contactNumber;
-    }
-
-    public String getAddress() {
-        return address;
-    }
-
-    public void setAddress(String address) {
-        this.address = address;
-    }
-
-    public User getUser() {
-        return user;
-    }
-
-    public void setUser(User user) {
-        this.user = user;
-    }
-
-    public List<Farmer> getFarmers() {
-        return farmers;
-    }
-
-    public void setFarmers(List<Farmer> farmers) {
-        this.farmers = farmers;
-    }
-
+    @OneToMany(mappedBy = "cooperative", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<User> members;
 }

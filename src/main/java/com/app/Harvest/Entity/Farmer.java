@@ -1,7 +1,6 @@
 package com.app.Harvest.Entity;
 
 import jakarta.persistence.*;
-import java.util.List;
 
 @Entity
 @Table(name = "farmers")
@@ -27,9 +26,7 @@ public class Farmer {
     @JoinColumn(name = "cooperative_id")
     private Cooperative cooperative;
 
-    // Farmer's production history
-    @OneToMany(mappedBy = "farmer", cascade = CascadeType.ALL)
-    private List<Production> productions;
+
 
     // ======== GETTERS AND SETTERS ========
 
@@ -81,11 +78,5 @@ public class Farmer {
         this.cooperative = cooperative;
     }
 
-    public List<Production> getProductions() {
-        return productions;
-    }
 
-    public void setProductions(List<Production> productions) {
-        this.productions = productions;
-    }
 }

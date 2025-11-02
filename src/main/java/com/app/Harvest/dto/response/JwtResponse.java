@@ -1,4 +1,4 @@
-package com.app.Harvest.dto;
+package com.app.Harvest.dto.response;
 
 public class JwtResponse {
     private String token;
