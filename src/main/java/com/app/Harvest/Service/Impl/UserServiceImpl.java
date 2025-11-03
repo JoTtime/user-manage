@@ -42,7 +42,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public List<UserResponse> getPendingApprovals() {
-        return userRepository.findByIsApprovedFalseAndRole(Role.COOPERATIVE).stream()
+        return userRepository.findByRoleAndIsApproved(Role.COOPERATIVE, false).stream()
                 .map(this::mapToUserResponse)
                 .collect(Collectors.toList());
     }

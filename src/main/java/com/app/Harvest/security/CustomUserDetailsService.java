@@ -23,17 +23,22 @@ public class CustomUserDetailsService implements UserDetailsService {
         User user = userRepository.findByUsernameOrEmail(usernameOrEmail, usernameOrEmail)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + usernameOrEmail));
 
-        // Check if user is validated before allowing login
-        boolean enabled = user.getIsValidated() != null && user.getIsValidated();
+        // For development: always enable users
+        // TODO: Re-enable validation check for production
+        boolean enabled = true;  // Changed from: user.getIsValidated() != null && user.getIsValidated();
 
+        // For production, use this instead:
+        // boolean enabled = user.getIsValidated() != null && user.getIsValidated();
+
+        // IMPORTANT: Use email as username in UserDetails so JWT token contains email
         return new org.springframework.security.core.userdetails.User(
-                user.getUsername(),  // Use username as principal
+                user.getEmail(),  // Use EMAIL as principal (not username) for JWT consistency
                 user.getPassword(),
                 enabled,  // Account enabled
                 true,     // Account non-expired
                 true,     // Credentials non-expired
                 true,     // Account non-locked
-                Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()))
+                Collections.singletonList(new SimpleGrantedAuthority(user.getRole().name()))
         );
     }
 }

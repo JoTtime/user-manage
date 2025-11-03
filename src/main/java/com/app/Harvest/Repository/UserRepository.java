@@ -11,26 +11,24 @@ import java.util.Optional;
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
 
-    Optional<User> findByUsername(String username);
-
     Optional<User> findByEmail(String email);
 
+    Optional<User> findByUsername(String username);
+
+    // ADD THIS METHOD
     Optional<User> findByUsernameOrEmail(String username, String email);
 
-    Boolean existsByUsername(String username);
+    boolean existsByEmail(String email);
 
-    Boolean existsByEmail(String email);
+    boolean existsByUsername(String username);
 
-    List<User> findByIsApproved(Boolean isApproved);
+    List<User> findByRole(Role role);
 
     List<User> findByCooperativeId(Long cooperativeId);
 
-    Optional<User> findByQrCode(String qrCode);
+    List<User> findByRoleAndIsApproved(Role role, Boolean isApproved);
 
-    Optional<User> findByRegistrationNumber(String registrationNumber);
+    long countByRole(Role role);
 
-    // ADD THESE TWO MISSING METHODS:
-    List<User> findByRole(Role role);
-
-    List<User> findByIsApprovedFalseAndRole(Role role);
+    long countByRoleAndIsApproved(Role role, Boolean isApproved);
 }

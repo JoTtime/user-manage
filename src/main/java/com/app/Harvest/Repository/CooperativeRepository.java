@@ -13,7 +13,9 @@ public interface CooperativeRepository extends JpaRepository<Cooperative, Long> 
 
     Optional<Cooperative> findByRegistrationNumber(String registrationNumber);
 
-    Boolean existsByName(String name);
+    boolean existsByName(String name);
 
-    Boolean existsByRegistrationNumber(String registrationNumber);
+    boolean existsByRegistrationNumber(String registrationNumber);
+
+    Optional<Cooperative> findByEmail(String email);
 }

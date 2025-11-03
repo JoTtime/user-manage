@@ -1,82 +1,48 @@
 package com.app.Harvest.Entity;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "farmers")
-public class Farmer {
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class Farmer extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "full_name", nullable = false)
+    private String fullName;
 
+    @Column(name = "phone_number", nullable = false)
     private String phoneNumber;
 
+    @Column(name = "location", nullable = false)
     private String location;
 
+    @Column(name = "crop")
+    private String crop;
+
+    @Column(name = "area_ha")
+    private Double areaHa;
+
+    @Column(name = "status", nullable = false)
+    @Builder.Default
+    private String status = "active"; // active or inactive
+
+    @Column(name = "qr_code", unique = true)
     private String qrCode; // optional: unique ID for offline access
 
-    // Farmer account (login credentials)
-    @OneToOne
-    @JoinColumn(name = "user_id")
-    private User user;
-
-    // Belongs to a cooperative
-    @ManyToOne
-    @JoinColumn(name = "cooperative_id")
+    // Belongs to a cooperative (farmer is registered by cooperative)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cooperative_id", nullable = false)
     private Cooperative cooperative;
 
-
-
-    // ======== GETTERS AND SETTERS ========
-
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getPhoneNumber() {
-        return phoneNumber;
-    }
-
-    public void setPhoneNumber(String phoneNumber) {
-        this.phoneNumber = phoneNumber;
-    }
-
-    public String getLocation() {
-        return location;
-    }
-
-    public void setLocation(String location) {
-        this.location = location;
-    }
-
-    public String getQrCode() {
-        return qrCode;
-    }
-
-    public void setQrCode(String qrCode) {
-        this.qrCode = qrCode;
-    }
-
-    public User getUser() {
-        return user;
-    }
-
-    public void setUser(User user) {
-        this.user = user;
-    }
-
-    public Cooperative getCooperative() {
-        return cooperative;
-    }
-
-    public void setCooperative(Cooperative cooperative) {
-        this.cooperative = cooperative;
-    }
-
-
+    // Optional: Link to user account (for future login functionality)
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User user;
 }
