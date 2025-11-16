@@ -8,6 +8,7 @@ import com.app.Harvest.dto.request.FarmerRequest;
 import com.app.Harvest.dto.response.ApiResponse;
 import com.app.Harvest.dto.response.BulkImportResponse;
 import com.app.Harvest.dto.response.FarmerResponse;
+import com.app.Harvest.dto.response.PagedResponse;
 import com.app.Harvest.exception.UnauthorizedException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/cooperative/farmers")
@@ -31,21 +33,57 @@ public class FarmerController {
     private final UserRepository userRepository;
 
     /**
-     * Get all farmers for the logged-in cooperative
-     * GET /api/cooperative/farmers
+     * Get all farmers for the logged-in cooperative (with pagination, filtering, and sorting)
+     * GET /api/cooperative/farmers?page=0&size=10&sortBy=name&sortOrder=asc&status=all&search=
      */
     @GetMapping
     @PreAuthorize("hasAuthority('COOPERATIVE')")
-    public ResponseEntity<ApiResponse<List<FarmerResponse>>> getAllFarmers(Authentication authentication) {
-        log.info("GET /api/cooperative/farmers - Fetching all farmers");
+    public ResponseEntity<ApiResponse<PagedResponse<FarmerResponse>>> getAllFarmers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "name") String sortBy,
+            @RequestParam(defaultValue = "asc") String sortOrder,
+            @RequestParam(defaultValue = "all") String status,
+            @RequestParam(defaultValue = "") String search,
+            Authentication authentication) {
+
+        log.info("GET /api/cooperative/farmers - Page: {}, Size: {}, Sort: {} {}, Status: {}, Search: '{}'",
+                page, size, sortBy, sortOrder, status, search);
 
         Long cooperativeId = getCooperativeIdFromAuth(authentication);
-        List<FarmerResponse> farmers = farmerService.getAllFarmersByCooperative(cooperativeId);
+        PagedResponse<FarmerResponse> pagedFarmers = farmerService.getAllFarmersByCooperative(
+                cooperativeId, page, size, sortBy, sortOrder, status, search);
+
+        ApiResponse<PagedResponse<FarmerResponse>> response = ApiResponse.<PagedResponse<FarmerResponse>>builder()
+                .success(true)
+                .message("Farmers retrieved successfully")
+                .data(pagedFarmers)
+                .build();
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Get all farmers without pagination (for backward compatibility or exports)
+     * GET /api/cooperative/farmers/all
+     */
+    @GetMapping("/all")
+    @PreAuthorize("hasAuthority('COOPERATIVE')")
+    public ResponseEntity<ApiResponse<List<FarmerResponse>>> getAllFarmersNonPaginated(
+            Authentication authentication) {
+
+        log.info("GET /api/cooperative/farmers/all - Fetching all farmers (non-paginated)");
+
+        Long cooperativeId = getCooperativeIdFromAuth(authentication);
+
+        // Get all farmers by calling the paginated method with a large page size
+        PagedResponse<FarmerResponse> pagedFarmers = farmerService.getAllFarmersByCooperative(
+                cooperativeId, 0, Integer.MAX_VALUE, "name", "asc", "all", "");
 
         ApiResponse<List<FarmerResponse>> response = ApiResponse.<List<FarmerResponse>>builder()
                 .success(true)
                 .message("Farmers retrieved successfully")
-                .data(farmers)
+                .data(pagedFarmers.getContent())
                 .build();
 
         return ResponseEntity.ok(response);
@@ -206,7 +244,7 @@ public class FarmerController {
     }
 
     /**
-     * Search farmers
+     * Search farmers (deprecated - use GET /farmers with search parameter instead)
      * GET /api/cooperative/farmers/search?q={searchTerm}
      */
     @GetMapping("/search")
@@ -218,12 +256,15 @@ public class FarmerController {
         log.info("GET /api/cooperative/farmers/search?q={} - Searching farmers", q);
 
         Long cooperativeId = getCooperativeIdFromAuth(authentication);
-        List<FarmerResponse> farmers = farmerService.searchFarmers(cooperativeId, q);
+
+        // Use paginated search with large page size for backward compatibility
+        PagedResponse<FarmerResponse> pagedFarmers = farmerService.getAllFarmersByCooperative(
+                cooperativeId, 0, 1000, "name", "asc", "all", q);
 
         ApiResponse<List<FarmerResponse>> response = ApiResponse.<List<FarmerResponse>>builder()
                 .success(true)
                 .message("Search completed successfully")
-                .data(farmers)
+                .data(pagedFarmers.getContent())
                 .build();
 
         return ResponseEntity.ok(response);
@@ -235,16 +276,16 @@ public class FarmerController {
      */
     @GetMapping("/statistics")
     @PreAuthorize("hasAuthority('COOPERATIVE')")
-    public ResponseEntity<ApiResponse<FarmerService.FarmerStatistics>> getFarmerStatistics(
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getFarmerStatistics(
             Authentication authentication) {
 
         log.info("GET /api/cooperative/farmers/statistics - Fetching statistics");
 
         Long cooperativeId = getCooperativeIdFromAuth(authentication);
-        FarmerService.FarmerStatistics stats = farmerService.getFarmerStatistics(cooperativeId);
+        Map<String, Object> stats = farmerService.getFarmerStatistics(cooperativeId);
 
-        ApiResponse<FarmerService.FarmerStatistics> response =
-                ApiResponse.<FarmerService.FarmerStatistics>builder()
+        ApiResponse<Map<String, Object>> response =
+                ApiResponse.<Map<String, Object>>builder()
                         .success(true)
                         .message("Statistics retrieved successfully")
                         .data(stats)
@@ -252,7 +293,6 @@ public class FarmerController {
 
         return ResponseEntity.ok(response);
     }
-
     /**
      * Extract cooperative ID from authenticated user
      * Gets the email from JWT token, finds the user, and returns their cooperative ID

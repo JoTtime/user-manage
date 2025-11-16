@@ -3,13 +3,13 @@ package com.app.Harvest.Service.Impl;
 import com.app.Harvest.Service.JwtService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
-import java.security.Key;
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -35,16 +35,17 @@ public class JwtServiceImpl implements JwtService {
         Date expiryDate = new Date(now.getTime() + expiration);
 
         return Jwts.builder()
-                .setClaims(claims)
-                .setSubject(subject)
-                .setIssuedAt(now)
-                .setExpiration(expiryDate)
-                .signWith(getSignKey(), SignatureAlgorithm.HS256)
+                .claims(claims)  // Changed from setClaims
+                .subject(subject)  // Changed from setSubject
+                .issuedAt(now)  // Changed from setIssuedAt
+                .expiration(expiryDate)  // Changed from setExpiration
+                .signWith(getSignKey())  // No need for SignatureAlgorithm
                 .compact();
     }
 
-    private Key getSignKey() {
-        return Keys.hmacShaKeyFor(secret.getBytes());
+    private SecretKey getSignKey() {
+        // Changed return type to SecretKey
+        return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
     @Override
@@ -62,11 +63,11 @@ public class JwtServiceImpl implements JwtService {
     }
 
     private Claims extractAllClaims(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(getSignKey())
+        return Jwts.parser()  // Changed from parserBuilder
+                .verifyWith(getSignKey())  // Changed from setSigningKey
                 .build()
-                .parseClaimsJws(token)
-                .getBody();
+                .parseSignedClaims(token)  // Changed from parseClaimsJws
+                .getPayload();  // Changed from getBody
     }
 
     @Override
