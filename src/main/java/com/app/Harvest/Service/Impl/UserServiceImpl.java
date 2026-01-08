@@ -6,7 +6,9 @@ import com.app.Harvest.Entity.User;
 import com.app.Harvest.exception.ResourceNotFoundException;
 import com.app.Harvest.Repository.UserRepository;
 import com.app.Harvest.Service.UserService;
+import com.app.Harvest.Service.EmailService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,9 +17,11 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
+    private final EmailService emailService;
 
     @Override
     public UserResponse getUserById(Long id) {
@@ -54,7 +58,17 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
 
         user.setIsApproved(true);
+        user.setIsActive(true); // Also activate the user account
         user = userRepository.save(user);
+
+        // Send approval email
+        try {
+            emailService.sendApprovalEmail(user);
+            log.info("Approval email sent successfully for user: {}", user.getEmail());
+        } catch (Exception e) {
+            log.error("Failed to send approval email for user: {}", user.getEmail(), e);
+            // Don't fail the approval if email fails
+        }
 
         return mapToUserResponse(user);
     }
@@ -68,6 +82,15 @@ public class UserServiceImpl implements UserService {
         user.setIsActive(false);
         user.setIsApproved(false);
         user = userRepository.save(user);
+
+        // Send rejection email
+        try {
+            emailService.sendRejectionEmail(user);
+            log.info("Rejection email sent successfully for user: {}", user.getEmail());
+        } catch (Exception e) {
+            log.error("Failed to send rejection email for user: {}", user.getEmail(), e);
+            // Don't fail the rejection if email fails
+        }
 
         return mapToUserResponse(user);
     }

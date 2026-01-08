@@ -8,6 +8,7 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 @EnableDiscoveryClient  // Use this instead of @EnableEurekaClient
 public class HarvestApplication {
     public static void main(String[] args) {
-        SpringApplication.run(HarvestApplication.class, args);
+        SpringApplication
+                .run(HarvestApplication.class, args);
     }
 }

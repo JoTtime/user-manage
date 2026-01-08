@@ -20,4 +20,5 @@ public class LoginResponse {
     private Role role;
     private Boolean isApproved;
     private String cooperativeName;
+    private Long cooperativeId; // Added this field
 }

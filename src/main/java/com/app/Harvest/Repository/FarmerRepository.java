@@ -72,13 +72,13 @@ public interface FarmerRepository extends JpaRepository<Farmer, Long> {
     Double sumAreaByCooperativeId(@Param("cooperativeId") Long cooperativeId);
 
     /**
-     * Search farmers by name, phone, location, or crop within a cooperative (paginated)
+     * Search farmers by name, phone, location, or language within a cooperative (paginated)
      */
     @Query("SELECT f FROM Farmer f WHERE f.cooperative.id = :cooperativeId " +
             "AND (LOWER(f.fullName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
             "OR LOWER(f.phoneNumber) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
             "OR LOWER(f.location) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
-            "OR LOWER(f.crop) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
+            "OR LOWER(f.language) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
     Page<Farmer> searchFarmersPaginated(@Param("cooperativeId") Long cooperativeId,
                                         @Param("searchTerm") String searchTerm,
                                         Pageable pageable);
@@ -91,20 +91,20 @@ public interface FarmerRepository extends JpaRepository<Farmer, Long> {
             "AND (LOWER(f.fullName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
             "OR LOWER(f.phoneNumber) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
             "OR LOWER(f.location) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
-            "OR LOWER(f.crop) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
+            "OR LOWER(f.language) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
     Page<Farmer> searchFarmersWithStatus(@Param("cooperativeId") Long cooperativeId,
                                          @Param("searchTerm") String searchTerm,
                                          @Param("status") String status,
                                          Pageable pageable);
 
     /**
-     * Search farmers by name, phone, location, or crop within a cooperative (non-paginated)
+     * Search farmers by name, phone, location, or language within a cooperative (non-paginated)
      */
     @Query("SELECT f FROM Farmer f WHERE f.cooperative.id = :cooperativeId " +
             "AND (LOWER(f.fullName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
             "OR LOWER(f.phoneNumber) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
             "OR LOWER(f.location) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
-            "OR LOWER(f.crop) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
+            "OR LOWER(f.language) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
     List<Farmer> searchFarmers(@Param("cooperativeId") Long cooperativeId,
                                @Param("searchTerm") String searchTerm);
 

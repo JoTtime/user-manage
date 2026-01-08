@@ -54,10 +54,30 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configure(http))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**").permitAll()  // Changed from /api/auth/**
-                        .requestMatchers("/users/pending-approvals").hasRole("SUPER_ADMIN")  // Changed
-                        .requestMatchers("/users/*/approve").hasRole("SUPER_ADMIN")  // Changed
-                        .requestMatchers("/users/*/reject").hasRole("SUPER_ADMIN")  // Changed
+                        // Public endpoints
+                        .requestMatchers("/api/auth/**", "/auth/**").permitAll()
+
+                        // Cooperative public endpoints (for batch operations and microservices)
+                        .requestMatchers("/api/cooperative/farmers/batch", "/cooperative/farmers/batch").permitAll()
+                        .requestMatchers("/api/cooperative/farmers/by-location", "/cooperative/farmers/by-location").permitAll()
+                        .requestMatchers("/api/cooperative/farmers/microservice/**", "/cooperative/farmers/microservice/**").permitAll()
+
+                        // Super Admin only endpoints
+                        .requestMatchers("/api/users/pending-approvals", "/users/pending-approvals").hasRole("SUPER_ADMIN")
+                        .requestMatchers("/api/users/*/approve", "/users/*/approve").hasRole("SUPER_ADMIN")
+                        .requestMatchers("/api/users/*/reject", "/users/*/reject").hasRole("SUPER_ADMIN")
+                        .requestMatchers("/api/users/*/delete", "/users/*/delete").hasRole("SUPER_ADMIN")
+
+                        // User management endpoints (Super Admin, Government, Admin)
+                        .requestMatchers("/api/users/**", "/users/**").hasAnyRole("SUPER_ADMIN", "ADMIN", "GOVERNMENT")
+
+                        // Cooperative endpoints - accessible by COOPERATIVE role and admins
+                        .requestMatchers("/api/cooperative/**", "/cooperative/**").hasAnyRole("SUPER_ADMIN", "COOPERATIVE", "GOVERNMENT")
+
+                        // Farmer endpoints - accessible by COOPERATIVE role and admins
+                        .requestMatchers("/api/farmers/**", "/farmers/**").hasAnyRole("SUPER_ADMIN", "COOPERATIVE", "GOVERNMENT")
+
+                        // All other requests must be authenticated
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exception -> exception

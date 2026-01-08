@@ -5,6 +5,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
@@ -14,6 +15,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class JwtServiceImpl implements JwtService {
@@ -26,7 +28,23 @@ public class JwtServiceImpl implements JwtService {
 
     @Override
     public String generateToken(UserDetails userDetails) {
+        return generateToken(userDetails, new HashMap<>());
+    }
+
+    @Override
+    public String generateToken(UserDetails userDetails, Map<String, Object> extraClaims) {
         Map<String, Object> claims = new HashMap<>();
+
+        // Add default claims
+        claims.put("roles", userDetails.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toList()));
+
+        // Add extra claims
+        if (extraClaims != null && !extraClaims.isEmpty()) {
+            claims.putAll(extraClaims);
+        }
+
         return createToken(claims, userDetails.getUsername());
     }
 
@@ -35,16 +53,15 @@ public class JwtServiceImpl implements JwtService {
         Date expiryDate = new Date(now.getTime() + expiration);
 
         return Jwts.builder()
-                .claims(claims)  // Changed from setClaims
-                .subject(subject)  // Changed from setSubject
-                .issuedAt(now)  // Changed from setIssuedAt
-                .expiration(expiryDate)  // Changed from setExpiration
-                .signWith(getSignKey())  // No need for SignatureAlgorithm
+                .claims(claims)
+                .subject(subject)
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(getSignKey())
                 .compact();
     }
 
     private SecretKey getSignKey() {
-        // Changed return type to SecretKey
         return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
@@ -63,11 +80,11 @@ public class JwtServiceImpl implements JwtService {
     }
 
     private Claims extractAllClaims(String token) {
-        return Jwts.parser()  // Changed from parserBuilder
-                .verifyWith(getSignKey())  // Changed from setSigningKey
+        return Jwts.parser()
+                .verifyWith(getSignKey())
                 .build()
-                .parseSignedClaims(token)  // Changed from parseClaimsJws
-                .getPayload();  // Changed from getBody
+                .parseSignedClaims(token)
+                .getPayload();
     }
 
     @Override

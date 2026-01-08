@@ -2,12 +2,18 @@ package com.app.Harvest.Service;
 
 import com.app.Harvest.Entity.Cooperative;
 import com.app.Harvest.Entity.Farmer;
+import com.app.Harvest.Entity.Project;
 import com.app.Harvest.Repository.CooperativeRepository;
 import com.app.Harvest.Repository.FarmerRepository;
+import com.app.Harvest.Repository.ProjectRepository;
+import com.app.Harvest.dto.request.CoordinatesRequest;
 import com.app.Harvest.dto.request.FarmerRequest;
+import com.app.Harvest.dto.request.ProjectRequest;
 import com.app.Harvest.dto.response.BulkImportResponse;
+import com.app.Harvest.dto.response.CoordinatesResponse;
 import com.app.Harvest.dto.response.FarmerResponse;
 import com.app.Harvest.dto.response.PagedResponse;
+import com.app.Harvest.dto.response.ProjectResponse;
 import com.app.Harvest.exception.ResourceNotFoundException;
 import com.app.Harvest.exception.BadRequestException;
 import lombok.RequiredArgsConstructor;
@@ -26,27 +32,34 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@Transactional
 public class FarmerService {
 
     private final FarmerRepository farmerRepository;
     private final CooperativeRepository cooperativeRepository;
+    private final ProjectRepository projectRepository;
+    private final ProjectService projectService;
 
     // Cameroon phone number pattern
     // Supports: +237XXXXXXXXX, 237XXXXXXXXX, or 6/2XXXXXXXX
-    private static final Pattern PHONE_PATTERN = Pattern.compile(
-            "^(\\+?237|237)?[26]\\d{8}$"
-    );
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^(\\+?237|237)?[26]\\d{8}$");
 
     // Location pattern: "City, Region"
-    private static final Pattern LOCATION_PATTERN = Pattern.compile(
-            "^[A-Za-zÀ-ÿ\\s-]+,\\s*[A-Za-z\\s]+$"
-    );
+    private static final Pattern LOCATION_PATTERN = Pattern.compile("^[A-Za-zÀ-ÿ\\s-]+,\\s*[A-Za-z\\s]+$");
 
     // Valid Cameroon regions
     private static final Set<String> VALID_REGIONS = new HashSet<>(Arrays.asList(
             "Adamawa", "Centre", "East", "Far North", "Littoral",
             "North", "Northwest", "South", "Southwest", "West"
     ));
+
+    // Available languages
+    private static final Set<String> VALID_LANGUAGES = new HashSet<>(Arrays.asList(
+            "English", "French", "Pidgin English", "Fulfulde", "Ewondo",
+            "Duala", "Bamileke", "Other"
+    ));
+
+    // ==================== VALIDATION METHODS ====================
 
     /**
      * Validate phone number format
@@ -81,9 +94,7 @@ public class FarmerService {
         // Extract region and validate
         String[] parts = location.split(",");
         if (parts.length != 2) {
-            throw new BadRequestException(
-                    "Invalid location format. Use: City, Region"
-            );
+            throw new BadRequestException("Invalid location format. Use: City, Region");
         }
 
         String region = parts[1].trim();
@@ -96,6 +107,53 @@ public class FarmerService {
             );
         }
     }
+
+    /**
+     * Validate language
+     */
+    private void validateLanguage(String language) {
+        if (language != null && !language.trim().isEmpty()) {
+            boolean languageValid = VALID_LANGUAGES.stream()
+                    .anyMatch(validLang -> validLang.equalsIgnoreCase(language.trim()));
+
+            if (!languageValid) {
+                throw new BadRequestException(
+                        "Invalid language. Valid languages: " + String.join(", ", VALID_LANGUAGES)
+                );
+            }
+        }
+    }
+
+    /**
+     * Validate coordinates
+     */
+    private void validateCoordinates(CoordinatesRequest coordinates) {
+        if (coordinates == null) {
+            return; // Coordinates are optional
+        }
+
+        // Validate latitude range (-90 to 90)
+        if (coordinates.getLatitude() < -90 || coordinates.getLatitude() > 90) {
+            throw new BadRequestException("Invalid latitude. Must be between -90 and 90 degrees");
+        }
+
+        // Validate longitude range (-180 to 180)
+        if (coordinates.getLongitude() < -180 || coordinates.getLongitude() > 180) {
+            throw new BadRequestException("Invalid longitude. Must be between -180 and 180 degrees");
+        }
+
+        // Validate coordinates are within Cameroon (approximate bounds)
+        boolean isInCameroon = coordinates.getLatitude() >= 1.65 &&
+                coordinates.getLatitude() <= 13.05 &&
+                coordinates.getLongitude() >= 8.38 &&
+                coordinates.getLongitude() <= 16.19;
+
+        if (!isInCameroon) {
+            throw new BadRequestException("Coordinates must be within Cameroon");
+        }
+    }
+
+    // ==================== UTILITY METHODS ====================
 
     /**
      * Normalize phone number for storage
@@ -112,6 +170,120 @@ public class FarmerService {
             return "+237" + cleaned;
         }
     }
+
+    /**
+     * Generate unique QR code for farmer
+     */
+    private String generateQrCode() {
+        return "QR-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    }
+
+    /**
+     * Map sort field names to entity field names
+     */
+    private String getSortField(String sortBy) {
+        switch (sortBy.toLowerCase()) {
+            case "name":
+                return "fullName";
+            case "location":
+                return "location";
+            case "area":
+                return "areaHa";
+            case "date":
+                return "createdAt";
+            default:
+                return "fullName";
+        }
+    }
+
+    /**
+     * Map Coordinates entity to CoordinatesResponse DTO
+     */
+    private CoordinatesResponse mapToCoordinatesResponse(com.app.Harvest.Entity.Coordinates coordinates) {
+        if (coordinates == null) {
+            return null;
+        }
+
+        return CoordinatesResponse.builder()
+                .latitude(coordinates.getLatitude())
+                .longitude(coordinates.getLongitude())
+                .address(coordinates.getAddress())
+                .build();
+    }
+
+    /**
+     * Map Farmer entity to FarmerResponse DTO
+     * @param farmer The farmer entity
+     * @param includeProjects Whether to include projects in response
+     */
+    private FarmerResponse mapToResponse(Farmer farmer, boolean includeProjects) {
+        // Calculate allocated area from projects
+        Double allocatedArea = projectRepository.sumAreaByFarmerId(farmer.getId());
+        if (allocatedArea == null) {
+            allocatedArea = 0.0;
+        }
+
+        // Calculate remaining area
+        Double remainingArea = farmer.getAreaHa() != null ?
+                farmer.getAreaHa() - allocatedArea : 0.0;
+
+        // Ensure remaining area is not negative
+        remainingArea = Math.max(remainingArea, 0.0);
+
+        // Map projects to ProjectResponse only if requested
+        List<ProjectResponse> projectResponses = null;
+        if (includeProjects) {
+            // Eagerly load projects
+            farmer.getProjects().size(); // This triggers loading
+
+            if (farmer.getProjects() != null && !farmer.getProjects().isEmpty()) {
+                projectResponses = farmer.getProjects().stream()
+                        .map(project -> ProjectResponse.builder()
+                                .id(project.getId())
+                                .cropName(project.getCropName())
+                                .areaHa(project.getAreaHa())
+                                .status(project.getStatus())
+                                .plantingDate(project.getPlantingDate())
+                                .expectedHarvestDate(project.getExpectedHarvestDate())
+                                .notes(project.getNotes())
+                                .farmerId(farmer.getId())
+                                .farmerName(farmer.getFullName())
+                                .createdAt(project.getCreatedAt())
+                                .updatedAt(project.getUpdatedAt())
+                                .build())
+                        .collect(Collectors.toList());
+            }
+        }
+
+        return FarmerResponse.builder()
+                .id(farmer.getId())
+                .fullName(farmer.getFullName())
+                .phoneNumber(farmer.getPhoneNumber())
+                .location(farmer.getLocation())
+                .language(farmer.getLanguage())
+                .areaHa(farmer.getAreaHa())
+                .allocatedArea(allocatedArea)
+                .remainingArea(remainingArea)
+                .status(farmer.getStatus())
+                .qrCode(farmer.getQrCode())
+                .coordinates(mapToCoordinatesResponse(farmer.getCoordinates()))
+                .cooperativeId(farmer.getCooperative().getId())
+                .cooperativeName(farmer.getCooperative().getName())
+                .projects(projectResponses)  // Will be null if includeProjects is false
+                .createdAt(farmer.getCreatedAt())
+                .updatedAt(farmer.getUpdatedAt())
+                .isActive(farmer.getIsActive())
+                .build();
+    }
+
+    /**
+     * Convenience method - excludes projects by default (for list views)
+     */
+    private FarmerResponse mapToResponse(Farmer farmer) {
+        return mapToResponse(farmer, false);
+    }
+
+    // ==================== BUSINESS LOGIC METHODS ====================
 
     /**
      * Get paginated farmers for a specific cooperative
@@ -167,9 +339,9 @@ public class FarmerService {
             farmerPage = farmerRepository.findByCooperativeId(cooperativeId, pageable);
         }
 
-        // Map to response DTOs
+        // Map to response DTOs WITHOUT projects (for dashboard table)
         List<FarmerResponse> farmerResponses = farmerPage.getContent().stream()
-                .map(this::mapToResponse)
+                .map(farmer -> mapToResponse(farmer, false))  // false = don't include projects
                 .collect(Collectors.toList());
 
         return PagedResponse.<FarmerResponse>builder()
@@ -184,24 +356,6 @@ public class FarmerService {
     }
 
     /**
-     * Map sort field names to entity field names
-     */
-    private String getSortField(String sortBy) {
-        switch (sortBy.toLowerCase()) {
-            case "name":
-                return "fullName";
-            case "location":
-                return "location";
-            case "area":
-                return "areaHa";
-            case "date":
-                return "createdAt";
-            default:
-                return "fullName";
-        }
-    }
-
-    /**
      * Get a specific farmer by ID (only if belongs to the cooperative)
      */
     @Transactional(readOnly = true)
@@ -212,13 +366,12 @@ public class FarmerService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Farmer not found with ID: " + farmerId + " for your cooperative"));
 
-        return mapToResponse(farmer);
+        return mapToResponse(farmer, true);  // true = include projects for detail view
     }
 
     /**
-     * Create a new farmer
+     * Create a new farmer with optional projects
      */
-    @Transactional
     public FarmerResponse createFarmer(FarmerRequest request, Long cooperativeId) {
         log.info("Creating new farmer for cooperative ID: {}", cooperativeId);
 
@@ -227,6 +380,12 @@ public class FarmerService {
 
         // Validate location format
         validateLocation(request.getLocation());
+
+        // Validate language if provided
+        validateLanguage(request.getLanguage());
+
+        // Validate coordinates if provided
+        validateCoordinates(request.getCoordinates());
 
         // Get cooperative
         Cooperative cooperative = cooperativeRepository.findById(cooperativeId)
@@ -248,30 +407,78 @@ public class FarmerService {
                     "\" already exists in your cooperative");
         }
 
+        // Validate projects if provided
+        if (request.getProjects() != null && !request.getProjects().isEmpty()) {
+            Double totalProjectArea = request.getProjects().stream()
+                    .mapToDouble(ProjectRequest::getAreaHa)
+                    .sum();
+
+            if (totalProjectArea > request.getAreaHa()) {
+                throw new BadRequestException(
+                        String.format("Total project area (%.2f ha) exceeds farmer's total area (%.2f ha)",
+                                totalProjectArea, request.getAreaHa()));
+            }
+        }
+
+        // Generate unique QR code
+        String qrCode = generateQrCode();
+        while (farmerRepository.existsByQrCode(qrCode)) {
+            qrCode = generateQrCode();
+        }
+
+        // Create coordinates entity if provided
+        com.app.Harvest.Entity.Coordinates coordinates = null;
+        if (request.getCoordinates() != null) {
+            coordinates = com.app.Harvest.Entity.Coordinates.builder()
+                    .latitude(request.getCoordinates().getLatitude())
+                    .longitude(request.getCoordinates().getLongitude())
+                    .address(request.getCoordinates().getAddress())
+                    .build();
+        }
+
         // Create farmer entity
         Farmer farmer = Farmer.builder()
                 .fullName(request.getFullName().trim())
                 .phoneNumber(normalizedPhone)
                 .location(request.getLocation().trim())
-                .crop(request.getCrop() != null ? request.getCrop().trim() : null)
+                .language(request.getLanguage() != null ? request.getLanguage().trim() : null)
                 .areaHa(request.getAreaHa())
                 .status(request.getStatus() != null ? request.getStatus() : "active")
-                .qrCode(generateQrCode())
+                .qrCode(qrCode)
+                .coordinates(coordinates)
                 .cooperative(cooperative)
                 .build();
 
         Farmer savedFarmer = farmerRepository.save(farmer);
         log.info("Farmer created successfully with ID: {}", savedFarmer.getId());
 
-        return mapToResponse(savedFarmer);
+        // Create projects if provided
+        if (request.getProjects() != null && !request.getProjects().isEmpty()) {
+            for (ProjectRequest projectRequest : request.getProjects()) {
+                Project project = Project.builder()
+                        .cropName(projectRequest.getCropName().trim())
+                        .areaHa(projectRequest.getAreaHa())
+                        .status(projectRequest.getStatus() != null ? projectRequest.getStatus() : "active")
+                        .plantingDate(projectRequest.getPlantingDate())
+                        .expectedHarvestDate(projectRequest.getExpectedHarvestDate())
+                        .notes(projectRequest.getNotes() != null ? projectRequest.getNotes().trim() : null)
+                        .farmer(savedFarmer)
+                        .build();
+
+                projectRepository.save(project);
+            }
+            log.info("Created {} projects for farmer ID: {}", request.getProjects().size(), savedFarmer.getId());
+        }
+
+        return mapToResponse(savedFarmer, true);  // true = include created projects in response
     }
 
     /**
      * Bulk import farmers from Excel/CSV
      */
-    @Transactional
     public BulkImportResponse bulkImportFarmers(List<FarmerRequest> farmersToImport, Long cooperativeId) {
-        log.info("Starting bulk import of {} farmers for cooperative {}", farmersToImport.size(), cooperativeId);
+        log.info("Starting bulk import of {} farmers for cooperative {}",
+                farmersToImport.size(), cooperativeId);
 
         BulkImportResponse response = BulkImportResponse.builder()
                 .totalProcessed(farmersToImport.size())
@@ -313,6 +520,12 @@ public class FarmerService {
                 // Validate location format
                 validateLocation(farmerRequest.getLocation());
 
+                // Validate language if provided
+                validateLanguage(farmerRequest.getLanguage());
+
+                // Validate coordinates if provided
+                validateCoordinates(farmerRequest.getCoordinates());
+
                 // Normalize phone number
                 String normalizedPhone = normalizePhoneNumber(farmerRequest.getPhoneNumber());
 
@@ -342,15 +555,26 @@ public class FarmerService {
                     qrCode = generateQrCode();
                 }
 
+                // Create coordinates entity if provided
+                com.app.Harvest.Entity.Coordinates coordinates = null;
+                if (farmerRequest.getCoordinates() != null) {
+                    coordinates = com.app.Harvest.Entity.Coordinates.builder()
+                            .latitude(farmerRequest.getCoordinates().getLatitude())
+                            .longitude(farmerRequest.getCoordinates().getLongitude())
+                            .address(farmerRequest.getCoordinates().getAddress())
+                            .build();
+                }
+
                 // Create farmer entity
                 Farmer farmer = Farmer.builder()
                         .fullName(farmerRequest.getFullName().trim())
                         .phoneNumber(normalizedPhone)
                         .location(farmerRequest.getLocation().trim())
-                        .crop(farmerRequest.getCrop() != null ? farmerRequest.getCrop().trim() : null)
+                        .language(farmerRequest.getLanguage() != null ? farmerRequest.getLanguage().trim() : null)
                         .areaHa(farmerRequest.getAreaHa())
                         .status(farmerRequest.getStatus() != null ? farmerRequest.getStatus() : "active")
                         .qrCode(qrCode)
+                        .coordinates(coordinates)
                         .cooperative(cooperative)
                         .build();
 
@@ -358,7 +582,7 @@ public class FarmerService {
                 Farmer savedFarmer = farmerRepository.save(farmer);
 
                 // Convert to response
-                FarmerResponse farmerResponse = mapToResponse(savedFarmer);
+                FarmerResponse farmerResponse = mapToResponse(savedFarmer, false);
                 response.getImportedFarmers().add(farmerResponse);
                 response.setSuccessCount(response.getSuccessCount() + 1);
 
@@ -372,8 +596,9 @@ public class FarmerService {
                 farmerData.put("fullName", farmerRequest.getFullName());
                 farmerData.put("phoneNumber", farmerRequest.getPhoneNumber());
                 farmerData.put("location", farmerRequest.getLocation());
-                farmerData.put("crop", farmerRequest.getCrop());
+                farmerData.put("language", farmerRequest.getLanguage());
                 farmerData.put("areaHa", farmerRequest.getAreaHa());
+                farmerData.put("coordinates", farmerRequest.getCoordinates());
 
                 BulkImportResponse.ImportError error = BulkImportResponse.ImportError.builder()
                         .row(rowNumber)
@@ -393,9 +618,8 @@ public class FarmerService {
     }
 
     /**
-     * Update an existing farmer
+     * Update an existing farmer with projects
      */
-    @Transactional
     public FarmerResponse updateFarmer(Long farmerId, FarmerRequest request, Long cooperativeId) {
         log.info("Updating farmer ID: {} for cooperative ID: {}", farmerId, cooperativeId);
 
@@ -404,6 +628,12 @@ public class FarmerService {
 
         // Validate location format
         validateLocation(request.getLocation());
+
+        // Validate language if provided
+        validateLanguage(request.getLanguage());
+
+        // Validate coordinates if provided
+        validateCoordinates(request.getCoordinates());
 
         // Get farmer (ensure it belongs to the cooperative)
         Farmer farmer = farmerRepository.findByIdAndCooperativeId(farmerId, cooperativeId)
@@ -430,12 +660,37 @@ public class FarmerService {
             }
         }
 
+        // Validate projects if provided
+        if (request.getProjects() != null && !request.getProjects().isEmpty()) {
+            Double totalProjectArea = request.getProjects().stream()
+                    .mapToDouble(ProjectRequest::getAreaHa)
+                    .sum();
+
+            if (totalProjectArea > request.getAreaHa()) {
+                throw new BadRequestException(
+                        String.format("Total project area (%.2f ha) exceeds farmer's total area (%.2f ha)",
+                                totalProjectArea, request.getAreaHa()));
+            }
+        }
+
         // Update farmer details
         farmer.setFullName(request.getFullName().trim());
         farmer.setPhoneNumber(normalizedPhone);
         farmer.setLocation(request.getLocation().trim());
-        farmer.setCrop(request.getCrop() != null ? request.getCrop().trim() : null);
+        farmer.setLanguage(request.getLanguage() != null ? request.getLanguage().trim() : null);
         farmer.setAreaHa(request.getAreaHa());
+
+        // Update coordinates if provided
+        if (request.getCoordinates() != null) {
+            com.app.Harvest.Entity.Coordinates coordinates = com.app.Harvest.Entity.Coordinates.builder()
+                    .latitude(request.getCoordinates().getLatitude())
+                    .longitude(request.getCoordinates().getLongitude())
+                    .address(request.getCoordinates().getAddress())
+                    .build();
+            farmer.setCoordinates(coordinates);
+        } else {
+            farmer.setCoordinates(null);
+        }
 
         if (request.getStatus() != null) {
             farmer.setStatus(request.getStatus());
@@ -444,13 +699,89 @@ public class FarmerService {
         Farmer updatedFarmer = farmerRepository.save(farmer);
         log.info("Farmer updated successfully with ID: {}", updatedFarmer.getId());
 
-        return mapToResponse(updatedFarmer);
+        // Process project updates
+        processProjectUpdates(farmerId, request.getProjects());
+
+        // Refresh farmer to get updated projects
+        Farmer refreshedFarmer = farmerRepository.findById(farmerId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Farmer not found with ID: " + farmerId));
+
+        return mapToResponse(refreshedFarmer, true);
+    }
+
+    /**
+     * Process project updates (create, update, delete)
+     */
+    private void processProjectUpdates(Long farmerId, List<ProjectRequest> projectRequests) {
+        if (projectRequests == null) {
+            projectRequests = new ArrayList<>();
+        }
+
+        // Get existing projects for this farmer
+        List<Project> existingProjects = projectRepository.findByFarmerId(farmerId);
+
+        // Create a map of existing projects by ID for quick lookup
+        Map<Long, Project> existingProjectMap = existingProjects.stream()
+                .collect(Collectors.toMap(Project::getId, p -> p));
+
+        // Track which project IDs from the request should be kept
+        Set<Long> projectIdsToKeep = new HashSet<>();
+
+        // Process each project from the request
+        for (ProjectRequest projectRequest : projectRequests) {
+            Project project;
+
+            if (projectRequest.getId() != null && existingProjectMap.containsKey(projectRequest.getId())) {
+                // UPDATE existing project
+                project = existingProjectMap.get(projectRequest.getId());
+                project.setCropName(projectRequest.getCropName().trim());
+                project.setAreaHa(projectRequest.getAreaHa());
+                project.setStatus(projectRequest.getStatus() != null ? projectRequest.getStatus() : "active");
+                project.setPlantingDate(projectRequest.getPlantingDate());
+                project.setExpectedHarvestDate(projectRequest.getExpectedHarvestDate());
+                project.setNotes(projectRequest.getNotes() != null ? projectRequest.getNotes().trim() : null);
+
+                projectIdsToKeep.add(project.getId());
+                log.info("Updating existing project ID: {}", project.getId());
+            } else {
+                // CREATE new project
+                Farmer farmer = farmerRepository.findById(farmerId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Farmer not found with ID: " + farmerId));
+
+                project = Project.builder()
+                        .cropName(projectRequest.getCropName().trim())
+                        .areaHa(projectRequest.getAreaHa())
+                        .status(projectRequest.getStatus() != null ? projectRequest.getStatus() : "active")
+                        .plantingDate(projectRequest.getPlantingDate())
+                        .expectedHarvestDate(projectRequest.getExpectedHarvestDate())
+                        .notes(projectRequest.getNotes() != null ? projectRequest.getNotes().trim() : null)
+                        .farmer(farmer)
+                        .build();
+
+                log.info("Creating new project for farmer ID: {}", farmerId);
+            }
+
+            projectRepository.save(project);
+        }
+
+        // DELETE projects that exist in the database but are not in the request
+        for (Project existingProject : existingProjects) {
+            if (!projectIdsToKeep.contains(existingProject.getId())) {
+                log.info("Deleting project ID: {} for farmer ID: {}", existingProject.getId(), farmerId);
+                projectRepository.delete(existingProject);
+            }
+        }
+
+        log.info("Project updates completed for farmer ID: {}. Kept: {}, Created: {}, Deleted: {}",
+                farmerId, projectIdsToKeep.size(),
+                projectRequests.size() - projectIdsToKeep.size(),
+                existingProjects.size() - projectIdsToKeep.size());
     }
 
     /**
      * Delete a farmer
      */
-    @Transactional
     public void deleteFarmer(Long farmerId, Long cooperativeId) {
         log.info("Deleting farmer ID: {} for cooperative ID: {}", farmerId, cooperativeId);
 
@@ -459,6 +790,9 @@ public class FarmerService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Farmer not found with ID: " + farmerId + " for your cooperative"));
 
+        // Delete all projects first (cascade should handle this, but being explicit)
+        projectRepository.deleteByFarmerId(farmerId);
+
         farmerRepository.delete(farmer);
         log.info("Farmer deleted successfully with ID: {}", farmerId);
     }
@@ -466,7 +800,6 @@ public class FarmerService {
     /**
      * Update farmer status (active/inactive)
      */
-    @Transactional
     public FarmerResponse updateFarmerStatus(Long farmerId, String status, Long cooperativeId) {
         log.info("Updating status for farmer ID: {} to {} for cooperative ID: {}",
                 farmerId, status, cooperativeId);
@@ -485,7 +818,7 @@ public class FarmerService {
         Farmer updatedFarmer = farmerRepository.save(farmer);
 
         log.info("Farmer status updated successfully");
-        return mapToResponse(updatedFarmer);
+        return mapToResponse(updatedFarmer, false);  // Don't include projects for status update
     }
 
     /**
@@ -504,53 +837,20 @@ public class FarmerService {
         long inactiveFarmers = farmerRepository.countByCooperativeIdAndStatus(cooperativeId, "inactive");
         Double totalArea = farmerRepository.sumAreaByCooperativeId(cooperativeId);
 
+        // Calculate total allocated area from projects
+        Double totalAllocatedArea = projectRepository.sumAllocatedAreaByCooperativeId(cooperativeId);
+        if (totalAllocatedArea == null) {
+            totalAllocatedArea = 0.0;
+        }
+
         Map<String, Object> stats = new HashMap<>();
         stats.put("totalFarmers", totalFarmers);
         stats.put("activeFarmers", activeFarmers);
         stats.put("inactiveFarmers", inactiveFarmers);
         stats.put("totalArea", totalArea != null ? totalArea : 0.0);
+        stats.put("totalAllocatedArea", totalAllocatedArea);
+        stats.put("totalRemainingArea", (totalArea != null ? totalArea : 0.0) - totalAllocatedArea);
 
         return stats;
-    }
-
-    /**
-     * Generate unique QR code for farmer
-     */
-    private String generateQrCode() {
-        return "QR-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-    }
-
-    /**
-     * Map Farmer entity to FarmerResponse DTO
-     */
-    private FarmerResponse mapToResponse(Farmer farmer) {
-        return FarmerResponse.builder()
-                .id(farmer.getId())
-                .fullName(farmer.getFullName())
-                .phoneNumber(farmer.getPhoneNumber())
-                .location(farmer.getLocation())
-                .crop(farmer.getCrop())
-                .areaHa(farmer.getAreaHa())
-                .status(farmer.getStatus())
-                .qrCode(farmer.getQrCode())
-                .cooperativeId(farmer.getCooperative().getId())
-                .cooperativeName(farmer.getCooperative().getName())
-                .createdAt(farmer.getCreatedAt())
-                .updatedAt(farmer.getUpdatedAt())
-                .isActive(farmer.getIsActive())
-                .build();
-    }
-
-    /**
-     * Inner class for farmer statistics
-     */
-    @lombok.Data
-    @lombok.Builder
-    @lombok.NoArgsConstructor
-    @lombok.AllArgsConstructor
-    public static class FarmerStatistics {
-        private Long totalFarmers;
-        private Long activeFarmers;
-        private Long inactiveFarmers;
     }
 }
